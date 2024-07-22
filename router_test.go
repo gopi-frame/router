@@ -2,265 +2,693 @@ package router
 
 import (
 	"context"
-	"io"
+	responseconstract "github.com/gopi-frame/contract/response"
+	routercontract "github.com/gopi-frame/contract/router"
+	"github.com/gopi-frame/response"
+	"github.com/stretchr/testify/assert"
 	"net/http"
 	"net/http/httptest"
-	"strconv"
+	"net/url"
 	"testing"
-	"time"
-
-	rc "github.com/gopi-frame/contract/response"
-	"github.com/gopi-frame/contract/router"
-	"github.com/gopi-frame/response"
-	"github.com/gorilla/mux"
-	"github.com/stretchr/testify/assert"
 )
 
-var testmkey = struct{}{}
-
-type testpassm struct{}
-
-func (m *testpassm) Handle(request *http.Request, next func(*http.Request) rc.Responser) rc.Responser {
-	request = request.WithContext(context.WithValue(request.Context(), testmkey, "middleware"))
-	return next(request)
+type staticController struct {
+	Prefix string
+	Host   string
 }
 
-type testblockm struct{}
-
-func (m *testblockm) Handle(request *http.Request, next func(*http.Request) rc.Responser) rc.Responser {
-	return response.New(401).JSON(map[string]any{"msg": "unauthorized"})
+func (s *staticController) RouteGroup() routercontract.RouteGroup {
+	return &RouteGroup{Prefix: s.Prefix, Host: s.Host}
 }
 
-type testconstructm struct {
-	startedAt time.Time
+func (s *staticController) Get(r *http.Request) responseconstract.Responser {
+	return response.New(http.StatusOK).JSON(map[string]any{"prefix": s.Prefix, "host": s.Host})
 }
 
-func (cm *testconstructm) Construct(request *http.Request) {
-	cm.startedAt = time.Now()
+type nonStaticController struct {
+	queries url.Values
+	Prefix  string
+	Host    string
 }
 
-func (cm *testconstructm) Handle(request *http.Request, next func(*http.Request) rc.Responser) rc.Responser {
-	return response.New(401).JSON(map[string]any{"msg": "unauthorized", "startedAt": cm.startedAt.Format("2006-01-02 15:04:05")})
+func (n *nonStaticController) Construct(r *http.Request) {
+	n.queries = r.URL.Query()
 }
 
-type teststatiscc struct {
-	page     int
-	pageSize int
+func (n *nonStaticController) RouteGroup() routercontract.RouteGroup {
+	return &RouteGroup{Prefix: n.Prefix, Host: n.Host}
 }
 
-func (c *teststatiscc) RouterGroup() router.RouteGroup {
-	return &RouteGroup{
-		Prefix: "/static",
+func (n *nonStaticController) Get(r *http.Request) responseconstract.Responser {
+	return response.New(http.StatusOK).JSON(n.queries)
+}
+
+var idKey = struct{}{}
+
+type staticMiddleware struct{}
+
+func (s *staticMiddleware) Handle(r *http.Request, next routercontract.Handler) responseconstract.Responser {
+	var resp responseconstract.Responser
+	if r.URL.Query().Has("id") {
+		ctx := context.WithValue(r.Context(), idKey, r.URL.Query().Get("id"))
+		r = r.WithContext(ctx)
+		resp = next(r)
+	} else {
+		resp = response.New(http.StatusForbidden)
 	}
+	resp.SetHeader("Custom-Header", "After request")
+	return resp
 }
 
-func (c *teststatiscc) List(request *http.Request) rc.Responser {
-	return response.New(200).JSON(map[string]int{
-		"page":      c.page,
-		"page_size": c.pageSize,
+type nonStaticMiddleware struct {
+	method string
+}
+
+func (n *nonStaticMiddleware) Construct(req *http.Request) {
+	n.method = req.Method
+}
+
+func (n *nonStaticMiddleware) Handle(r *http.Request, next routercontract.Handler) responseconstract.Responser {
+	var resp responseconstract.Responser
+	if r.URL.Query().Has("id") {
+		ctx := context.WithValue(r.Context(), idKey, r.URL.Query().Get("id"))
+		r = r.WithContext(ctx)
+		resp = next(r)
+	} else {
+		resp = response.New(http.StatusForbidden)
+	}
+	resp.SetHeader("Request-Method", n.method)
+	resp.SetHeader("Custom-Header", "After request")
+	return resp
+}
+
+func TestRouter_GET(t *testing.T) {
+	router := New()
+	router.GET("/get", func(request *http.Request) responseconstract.Responser {
+		return response.New(200, "Hello World!")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/get", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, "Hello World!", w.Body.String())
+	})
+
+	t.Run("method not allowed", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/get", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 405, w.Code)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/notfound", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 404, w.Code)
 	})
 }
 
-type testconstructc struct {
-	page     int
-	pageSize int
-}
+func TestRouter_POST(t *testing.T) {
+	router := New()
+	router.POST("/post", func(request *http.Request) responseconstract.Responser {
+		return response.New(200, "Hello World!")
+	})
 
-func (c *testconstructc) RouterGroup() router.RouteGroup {
-	return &RouteGroup{
-		Prefix: "/construct",
-	}
-}
+	t.Run("success", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/post", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, "Hello World!", w.Body.String())
+	})
 
-func (c *testconstructc) Construct(request *http.Request) {
-	page, _ := strconv.Atoi(request.URL.Query().Get("page"))
-	pageSize, _ := strconv.Atoi(request.URL.Query().Get("page_size"))
-	c.page = page
-	c.pageSize = pageSize
-}
+	t.Run("method not allowed", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/post", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 405, w.Code)
+	})
 
-func (c *testconstructc) List(request *http.Request) rc.Responser {
-	return response.New(200).JSON(map[string]int{
-		"page":      c.page,
-		"page_size": c.pageSize,
+	t.Run("not found", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("POST", "/notfound", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 404, w.Code)
 	})
 }
 
-func TestRouter(t *testing.T) {
-	t.Run("without middleware", func(t *testing.T) {
-		r := New()
-		r.Group(&RouteGroup{
-			Prefix: "/api",
-			Host:   "example.com",
-		}, func(r router.Router) {
-			r.GET("/users", func(request *http.Request) rc.Responser {
-				currentRoute := mux.CurrentRoute(request)
-				hostTpl, err := currentRoute.GetHostTemplate()
-				if err != nil {
-					assert.FailNow(t, err.Error())
-				}
-				return response.New(200).JSON(map[string]any{
-					"host": hostTpl,
-				})
+func TestRouter_PUT(t *testing.T) {
+	router := New()
+	router.PUT("/put", func(request *http.Request) responseconstract.Responser {
+		return response.New(200, "Hello World!")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("PUT", "/put", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, "Hello World!", w.Body.String())
+	})
+
+	t.Run("method not allowed", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/put", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 405, w.Code)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/notfound", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 404, w.Code)
+	})
+}
+
+func TestRouter_PATCH(t *testing.T) {
+	router := New()
+	router.PATCH("/patch", func(request *http.Request) responseconstract.Responser {
+		return response.New(200, "Hello World!")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("PATCH", "/patch", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, "Hello World!", w.Body.String())
+	})
+
+	t.Run("method not allowed", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/patch", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 405, w.Code)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("PATCH", "/notfound", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 404, w.Code)
+	})
+}
+
+func TestRouter_DELETE(t *testing.T) {
+	router := New()
+	router.DELETE("/delete", func(request *http.Request) responseconstract.Responser {
+		return response.New(200, "Hello World!")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("DELETE", "/delete", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, "Hello World!", w.Body.String())
+	})
+
+	t.Run("method not allowed", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/delete", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 405, w.Code)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("DELETE", "/notfound", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 404, w.Code)
+	})
+}
+
+func TestRouter_HEAD(t *testing.T) {
+	router := New()
+	router.HEAD("/head", func(request *http.Request) responseconstract.Responser {
+		return nil
+	})
+
+	t.Run("success", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("HEAD", "/head", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, "", w.Body.String())
+	})
+
+	t.Run("method not allowed", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/head", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 405, w.Code)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("HEAD", "/notfound", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 404, w.Code)
+	})
+}
+
+func TestRouter_OPTIONS(t *testing.T) {
+	router := New()
+	router.OPTIONS("/options", func(request *http.Request) responseconstract.Responser {
+		return nil
+	})
+	t.Run("success", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("OPTIONS", "/options", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, "", w.Body.String())
+	})
+
+	t.Run("method not allowed", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/options", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 405, w.Code)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("OPTIONS", "/notfound", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 404, w.Code)
+	})
+}
+
+func TestRouter_Route(t *testing.T) {
+	router := New()
+	router.Route([]string{http.MethodGet, http.MethodPost}, "/multi", func(request *http.Request) responseconstract.Responser {
+		return response.New(200, "Hello World!")
+	})
+	t.Run("success", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/multi", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 200, w.Code)
+		assert.Equal(t, "Hello World!", w.Body.String())
+
+		w2 := httptest.NewRecorder()
+		req2, _ := http.NewRequest("POST", "/multi", nil)
+		router.ServeHTTP(w2, req2)
+		assert.Equal(t, 200, w2.Code)
+		assert.Equal(t, "Hello World!", w2.Body.String())
+	})
+
+	t.Run("method not allowed", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("DELETE", "/multi", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 405, w.Code)
+	})
+
+	t.Run("not found", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest("GET", "/notfound", nil)
+		router.ServeHTTP(w, req)
+		assert.Equal(t, 404, w.Code)
+	})
+}
+
+func TestRouter_Group(t *testing.T) {
+	t.Run("prefix", func(t *testing.T) {
+		router := New()
+		router.Group(&RouteGroup{Prefix: "/prefix"}, func(router routercontract.Router) {
+			router.GET("/get", func(request *http.Request) responseconstract.Responser {
+				return response.New(200, "Hello World!")
 			})
 		})
-		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		recorder := httptest.NewRecorder()
-		r.ServeHTTP(recorder, req)
-		assert.Equal(t, 200, recorder.Result().StatusCode)
-		content, err := io.ReadAll(recorder.Result().Body)
-		if err != nil {
-			assert.FailNow(t, err.Error())
-		}
-		assert.JSONEq(t, `{"host": "example.com"}`, string(content))
+
+		t.Run("success", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest("GET", "/prefix/get", nil)
+			router.ServeHTTP(w, req)
+			assert.Equal(t, 200, w.Code)
+			assert.Equal(t, "Hello World!", w.Body.String())
+		})
+
+		t.Run("not found", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest("GET", "/get", nil)
+			router.ServeHTTP(w, req)
+			assert.Equal(t, 404, w.Code)
+		})
 	})
 
-	t.Run("with middleware and passed", func(t *testing.T) {
-		r := New()
-		r.Group(&RouteGroup{
-			Prefix: "/api",
-			Host:   "example.com",
-		}, func(r router.Router) {
-			r.GET("/users", func(request *http.Request) rc.Responser {
-				currentRoute := mux.CurrentRoute(request)
-				hostTpl, err := currentRoute.GetHostTemplate()
-				if err != nil {
-					assert.FailNow(t, err.Error())
-				}
-				return response.New(200).JSON(map[string]any{
-					"host":      hostTpl,
-					"ctx_value": request.Context().Value(testmkey),
-				})
+	t.Run("subdomain", func(t *testing.T) {
+		router := New()
+		router.Group(&RouteGroup{Host: "www.example.com"}, func(router routercontract.Router) {
+			router.GET("/get", func(request *http.Request) responseconstract.Responser {
+				return response.New(200, "Hello World!")
 			})
-		}).Use(new(testpassm))
-		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		recorder := httptest.NewRecorder()
-		r.ServeHTTP(recorder, req)
-		assert.Equal(t, 200, recorder.Result().StatusCode)
-		content, err := io.ReadAll(recorder.Result().Body)
-		if err != nil {
-			assert.FailNow(t, err.Error())
-		}
-		assert.JSONEq(t, `{"host": "example.com", "ctx_value": "middleware"}`, string(content))
+		})
+
+		t.Run("success", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest("GET", "https://www.example.com/get", nil)
+			router.ServeHTTP(w, req)
+			assert.Equal(t, 200, w.Code)
+			assert.Equal(t, "Hello World!", w.Body.String())
+		})
+
+		t.Run("not found", func(t *testing.T) {
+			w2 := httptest.NewRecorder()
+			req2, _ := http.NewRequest("GET", "https://www.example2.com/get", nil)
+			router.ServeHTTP(w2, req2)
+			assert.Equal(t, 404, w2.Code)
+		})
+
 	})
 
-	t.Run("with middleware and blocked", func(t *testing.T) {
-		r := New()
-		r.Group(&RouteGroup{
-			Prefix: "/api",
-			Host:   "example.com",
-		}, func(r router.Router) {
-			r.GET("/users", func(request *http.Request) rc.Responser {
-				currentRoute := mux.CurrentRoute(request)
-				hostTpl, err := currentRoute.GetHostTemplate()
-				if err != nil {
-					assert.FailNow(t, err.Error())
-				}
-				return response.New(200).JSON(map[string]any{
-					"host": hostTpl,
-				})
+	t.Run("mix prefix and subdomain", func(t *testing.T) {
+		router := New()
+		router.Group(&RouteGroup{Prefix: "/prefix", Host: "www.example.com"}, func(router routercontract.Router) {
+			router.GET("/get", func(request *http.Request) responseconstract.Responser {
+				return response.New(200, "Hello World!")
 			})
-		}).Use(new(testblockm))
-		req := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		recorder := httptest.NewRecorder()
-		r.ServeHTTP(recorder, req)
-		assert.Equal(t, 401, recorder.Result().StatusCode)
-		content, err := io.ReadAll(recorder.Result().Body)
-		if err != nil {
-			assert.FailNow(t, err.Error())
-		}
-		assert.JSONEq(t, `{"msg": "unauthorized"}`, string(content))
+		})
+
+		t.Run("success", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, _ := http.NewRequest("GET", "https://www.example.com/prefix/get", nil)
+			router.ServeHTTP(w, req)
+			assert.Equal(t, 200, w.Code)
+			assert.Equal(t, "Hello World!", w.Body.String())
+		})
+
+		t.Run("method not allowed", func(t *testing.T) {
+			w2 := httptest.NewRecorder()
+			req2, _ := http.NewRequest("POST", "https://www.example.com/prefix/get", nil)
+			router.ServeHTTP(w2, req2)
+			assert.Equal(t, 405, w2.Code)
+		})
+
+		t.Run("host not matched", func(t *testing.T) {
+			w3 := httptest.NewRecorder()
+			req3, _ := http.NewRequest("GET", "https://www.example2.com/prefix/get", nil)
+			router.ServeHTTP(w3, req3)
+			assert.Equal(t, 404, w3.Code)
+		})
+
+		t.Run("not found", func(t *testing.T) {
+			w4 := httptest.NewRecorder()
+			req4, _ := http.NewRequest("GET", "https://www.example.com/get", nil)
+			router.ServeHTTP(w4, req4)
+			assert.Equal(t, 404, w4.Code)
+		})
 	})
+}
 
-	t.Run("with constructor middleware", func(t *testing.T) {
-		r := New()
-		r.Group(&RouteGroup{
-			Prefix: "/api",
-			Host:   "example.com",
-		}, func(r router.Router) {
-			r.GET("/users", func(request *http.Request) rc.Responser {
-				currentRoute := mux.CurrentRoute(request)
-				hostTpl, err := currentRoute.GetHostTemplate()
-				if err != nil {
-					assert.FailNow(t, err.Error())
-				}
-				return response.New(200).JSON(map[string]any{
-					"host": hostTpl,
-				})
-			})
-		}).Use(new(testconstructm))
-		req1 := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		recorder1 := httptest.NewRecorder()
-		r.ServeHTTP(recorder1, req1)
-		assert.Equal(t, 401, recorder1.Result().StatusCode)
-		content1, err := io.ReadAll(recorder1.Result().Body)
-		if err != nil {
-			assert.FailNow(t, err.Error())
-		}
-
-		req2 := httptest.NewRequest(http.MethodGet, "/api/users", nil)
-		recorder2 := httptest.NewRecorder()
-		r.ServeHTTP(recorder2, req2)
-		assert.Equal(t, 401, recorder1.Result().StatusCode)
-		content2, err := io.ReadAll(recorder1.Result().Body)
-		if err != nil {
-			assert.FailNow(t, err.Error())
-		}
-
-		assert.NotEqual(t, content1, content2)
-	})
-
+func TestRouter_Controller(t *testing.T) {
 	t.Run("static controller", func(t *testing.T) {
-		sc := new(teststatiscc)
-		sc.page = 1
-		sc.pageSize = 10
-
+		controller := new(staticController)
+		controller.Prefix = "/prefix"
 		r := New()
-		r.Controller(sc, func(r router.Router) {
-			r.GET("/users", sc.List)
+		r.Controller(controller, func(router routercontract.Router) {
+			router.GET("/get", controller.Get)
 		})
 
-		req := httptest.NewRequest(http.MethodGet, "/static/users", nil)
-		recorder := httptest.NewRecorder()
-		r.ServeHTTP(recorder, req)
-		assert.Equal(t, 200, recorder.Result().StatusCode)
-		content, err := io.ReadAll(recorder.Result().Body)
-		if err != nil {
-			assert.FailNow(t, err.Error())
-		}
-		assert.JSONEq(t, `{"page": 1, "page_size": 10}`, string(content))
+		t.Run("success", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, err := http.NewRequest("GET", "/prefix/get", nil)
+			if err != nil {
+				assert.FailNow(t, err.Error())
+			}
+			r.ServeHTTP(w, req)
+			assert.Equal(t, 200, w.Code)
+			assert.JSONEq(t, `{"prefix": "/prefix", "host": ""}`, w.Body.String())
+		})
+
+		t.Run("method not allowed", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, err := http.NewRequest("POST", "/prefix/get", nil)
+			if err != nil {
+				assert.FailNow(t, err.Error())
+			}
+			r.ServeHTTP(w, req)
+			assert.Equal(t, 405, w.Code)
+		})
+
+		t.Run("not found", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, err := http.NewRequest("GET", "/notfound", nil)
+			if err != nil {
+				assert.FailNow(t, err.Error())
+			}
+			r.ServeHTTP(w, req)
+			assert.Equal(t, 404, w.Code)
+		})
 	})
 
-	t.Run("constructable controller", func(t *testing.T) {
-		cc := new(testconstructc)
+	t.Run("non-static controller", func(t *testing.T) {
+		controller := new(nonStaticController)
+		controller.Prefix = "/prefix"
 		r := New()
-		r.Controller(cc, func(r router.Router) {
-			r.GET("/users", cc.List)
-			r.GET("/users2", func(request *http.Request) rc.Responser {
-				return response.New(200).JSON(map[string]any{
-					"msg": "ok",
-				})
+		r.Controller(controller, func(router routercontract.Router) {
+			router.GET("/get", controller.Get)
+		})
+		t.Run("success", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, err := http.NewRequest("GET", "/prefix/get?id=1", nil)
+			if err != nil {
+				assert.FailNow(t, err.Error())
+			}
+			r.ServeHTTP(w, req)
+			assert.Equal(t, 200, w.Code)
+			assert.JSONEq(t, `{"id": ["1"]}`, w.Body.String())
+		})
+
+		t.Run("method not allowed", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, err := http.NewRequest("POST", "/prefix/get?id=1", nil)
+			if err != nil {
+				assert.FailNow(t, err.Error())
+			}
+			r.ServeHTTP(w, req)
+			assert.Equal(t, 405, w.Code)
+		})
+
+		t.Run("not found", func(t *testing.T) {
+			w := httptest.NewRecorder()
+			req, err := http.NewRequest("GET", "/notfound", nil)
+			if err != nil {
+				assert.FailNow(t, err.Error())
+			}
+			r.ServeHTTP(w, req)
+			assert.Equal(t, 404, w.Code)
+		})
+	})
+}
+
+func TestRouter_Use(t *testing.T) {
+	t.Run("static middleware", func(t *testing.T) {
+		t.Run("global", func(t *testing.T) {
+			r := New()
+			r.Use(new(staticMiddleware))
+			r.GET("/get", func(request *http.Request) responseconstract.Responser {
+				return response.New(200).JSON(map[string]any{"id": request.Context().Value(idKey)})
+			})
+			r.POST("/post", func(request *http.Request) responseconstract.Responser {
+				return response.New(200).JSON(map[string]any{"id": request.Context().Value(idKey)})
+			})
+			t.Run("pass", func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req, err := http.NewRequest("GET", "/get?id=1", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w, req)
+				assert.Equal(t, 200, w.Code)
+				assert.JSONEq(t, `{"id": "1"}`, w.Body.String())
+				assert.Equal(t, "After request", w.Header().Get("Custom-Header"))
+
+				w2 := httptest.NewRecorder()
+				req2, err := http.NewRequest("POST", "/post?id=1", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w2, req2)
+				assert.Equal(t, 200, w2.Code)
+				assert.JSONEq(t, `{"id": "1"}`, w2.Body.String())
+				assert.Equal(t, "After request", w2.Header().Get("Custom-Header"))
+			})
+			t.Run("block", func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req, err := http.NewRequest("GET", "/get", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w, req)
+				assert.Equal(t, 403, w.Code)
+				assert.Equal(t, "After request", w.Header().Get("Custom-Header"))
+
+				w2 := httptest.NewRecorder()
+				req2, err := http.NewRequest("POST", "/post", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w2, req2)
+				assert.Equal(t, 403, w2.Code)
+				assert.Equal(t, "After request", w2.Header().Get("Custom-Header"))
 			})
 		})
 
-		req1 := httptest.NewRequest(http.MethodGet, "/construct/users?page=2&page_size=20", nil)
-		recorder1 := httptest.NewRecorder()
-		r.ServeHTTP(recorder1, req1)
-		assert.Equal(t, 200, recorder1.Result().StatusCode)
-		content, err := io.ReadAll(recorder1.Result().Body)
-		if err != nil {
-			assert.FailNow(t, err.Error())
-		}
-		assert.JSONEq(t, `{"page": 2, "page_size": 20}`, string(content))
+		t.Run("group", func(t *testing.T) {
+			r := New()
+			r.Group(&RouteGroup{Prefix: "/group"}, func(router routercontract.Router) {
+				router.GET("/get", func(request *http.Request) responseconstract.Responser {
+					return response.New(200).JSON(map[string]any{"id": request.Context().Value(idKey)})
+				})
+			}).Use(new(staticMiddleware))
+			r.POST("/post", func(request *http.Request) responseconstract.Responser {
+				return response.New(200).JSON(map[string]any{"id": request.Context().Value(idKey)})
+			})
+			t.Run("pass", func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req, err := http.NewRequest("GET", "/group/get?id=1", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w, req)
+				assert.Equal(t, 200, w.Code)
+				assert.JSONEq(t, `{"id": "1"}`, w.Body.String())
+				assert.Equal(t, "After request", w.Header().Get("Custom-Header"))
 
-		req2 := httptest.NewRequest(http.MethodGet, "/construct/users2?page=2&page_size=20", nil)
-		recorder2 := httptest.NewRecorder()
-		r.ServeHTTP(recorder2, req2)
-		assert.Equal(t, 200, recorder2.Result().StatusCode)
-		content, err = io.ReadAll(recorder2.Result().Body)
-		if err != nil {
-			assert.FailNow(t, err.Error())
-		}
-		assert.JSONEq(t, `{"msg": "ok"}`, string(content))
+				w2 := httptest.NewRecorder()
+				req2, err := http.NewRequest("POST", "/post", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w2, req2)
+				assert.Equal(t, 200, w2.Code)
+				assert.JSONEq(t, `{"id": null}`, w2.Body.String())
+				assert.Equal(t, "", w2.Header().Get("Custom-Header"))
+			})
+
+			t.Run("block", func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req, err := http.NewRequest("GET", "/group/get", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w, req)
+				assert.Equal(t, 403, w.Code)
+				assert.Equal(t, "After request", w.Header().Get("Custom-Header"))
+			})
+		})
+	})
+
+	t.Run("non-static middleware", func(t *testing.T) {
+		t.Run("global", func(t *testing.T) {
+			r := New()
+			r.Use(new(nonStaticMiddleware))
+			r.GET("/get", func(request *http.Request) responseconstract.Responser {
+				return response.New(200).JSON(map[string]any{"id": request.Context().Value(idKey)})
+			})
+			r.POST("/post", func(request *http.Request) responseconstract.Responser {
+				return response.New(200).JSON(map[string]any{"id": request.Context().Value(idKey)})
+			})
+			t.Run("pass", func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req, err := http.NewRequest("GET", "/get?id=1", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w, req)
+				assert.Equal(t, 200, w.Code)
+				assert.JSONEq(t, `{"id": "1"}`, w.Body.String())
+				assert.Equal(t, "After request", w.Header().Get("Custom-Header"))
+				assert.Equal(t, "GET", w.Header().Get("Request-Method"))
+
+				w2 := httptest.NewRecorder()
+				req2, err := http.NewRequest("POST", "/post?id=1", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w2, req2)
+				assert.Equal(t, 200, w2.Code)
+				assert.JSONEq(t, `{"id": "1"}`, w2.Body.String())
+				assert.Equal(t, "After request", w2.Header().Get("Custom-Header"))
+				assert.Equal(t, "POST", w2.Header().Get("Request-Method"))
+			})
+
+			t.Run("block", func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req, err := http.NewRequest("GET", "/get", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w, req)
+				assert.Equal(t, 403, w.Code)
+				assert.Equal(t, "After request", w.Header().Get("Custom-Header"))
+				assert.Equal(t, "GET", w.Header().Get("Request-Method"))
+
+				w2 := httptest.NewRecorder()
+				req2, err := http.NewRequest("POST", "/post", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w2, req2)
+				assert.Equal(t, 403, w2.Code)
+				assert.Equal(t, "After request", w2.Header().Get("Custom-Header"))
+				assert.Equal(t, "POST", w2.Header().Get("Request-Method"))
+			})
+		})
+
+		t.Run("group", func(t *testing.T) {
+			r := New()
+			r.Group(&RouteGroup{Prefix: "/group"}, func(router routercontract.Router) {
+				router.Use(new(nonStaticMiddleware))
+				router.GET("/get", func(request *http.Request) responseconstract.Responser {
+					return response.New(200).JSON(map[string]any{"id": request.Context().Value(idKey)})
+				})
+			})
+			r.POST("/post", func(request *http.Request) responseconstract.Responser {
+				return response.New(200).JSON(map[string]any{"id": request.Context().Value(idKey)})
+			})
+			t.Run("pass", func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req, err := http.NewRequest("GET", "/group/get?id=1", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w, req)
+				assert.Equal(t, 200, w.Code)
+				assert.JSONEq(t, `{"id": "1"}`, w.Body.String())
+				assert.Equal(t, "After request", w.Header().Get("Custom-Header"))
+				assert.Equal(t, "GET", w.Header().Get("Request-Method"))
+
+				w2 := httptest.NewRecorder()
+				req2, err := http.NewRequest("POST", "/post?id=1", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w2, req2)
+				assert.Equal(t, 200, w2.Code)
+				assert.JSONEq(t, `{"id": null}`, w2.Body.String())
+				assert.Equal(t, "", w2.Header().Get("Custom-Header"))
+				assert.Equal(t, "", w2.Header().Get("Request-Method"))
+			})
+
+			t.Run("block", func(t *testing.T) {
+				w := httptest.NewRecorder()
+				req, err := http.NewRequest("GET", "/group/get", nil)
+				if err != nil {
+					assert.FailNow(t, err.Error())
+				}
+				r.ServeHTTP(w, req)
+				assert.Equal(t, 403, w.Code)
+				assert.Equal(t, "After request", w.Header().Get("Custom-Header"))
+				assert.Equal(t, "GET", w.Header().Get("Request-Method"))
+			})
+		})
 	})
 }

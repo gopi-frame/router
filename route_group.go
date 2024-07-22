@@ -32,7 +32,7 @@ func (r *RouteGroup) Build() router.Router {
 		return &Router{
 			Router: route.Subrouter(),
 
-			cmcache: r.p.cmcache,
+			middlewareConstructorIndexCache: r.p.middlewareConstructorIndexCache,
 		}
 	}
 	return r.p
