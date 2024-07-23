@@ -132,32 +132,32 @@ It is static, so you shall **NEVER** set any active data in the controller's pro
 package main
 
 import (
-	responsecontract "github.com/gopi-frame/contract/response"
-	routercontract "github.com/gopi-frame/contract/router"
-	"github.com/gopi-frame/response"
-	"github.com/gopi-frame/router"
-	"net/http"
+    responsecontract "github.com/gopi-frame/contract/response"
+    routercontract "github.com/gopi-frame/contract/router"
+    "github.com/gopi-frame/response"
+    "github.com/gopi-frame/router"
+    "net/http"
 )
 
 type StaticController struct{}
 
 func (s *StaticController) RouteGroup() routercontract.RouteGroup {
-	return &router.RouteGroup{Prefix: "/static"}
+    return &router.RouteGroup{Prefix: "/static"}
 }
 
 func (s *StaticController) Get(r *http.Request) responsecontract.Responser {
-	return response.New(http.StatusOK, "Hello World")
+    return response.New(http.StatusOK, "Hello World")
 }
 
 func main() {
     r := router.New()
-	staticController := &StaticController{}
-	r.Controller(, func(r routercontract.Router) {
+    staticController := &StaticController{}
+    r.Controller(, func(r routercontract.Router) {
         r.GET("/get", staticController.Get)
-	})
-	if err := http.ListenAndServe(":8080", r); err != nil {
-		panic(err)
-	}
+    })
+    if err := http.ListenAndServe(":8080", r); err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -173,35 +173,35 @@ It is useful when you want to initialize a controller with some data.
 package main
 
 import (
-	responsecontract "github.com/gopi-frame/contract/response"
-	routercontract "github.com/gopi-frame/contract/router"
-	"github.com/gopi-frame/response"
-	"github.com/gopi-frame/router"
-	"net/http"
+    responsecontract "github.com/gopi-frame/contract/response"
+    routercontract "github.com/gopi-frame/contract/router"
+    "github.com/gopi-frame/response"
+    "github.com/gopi-frame/router"
+    "net/http"
 )
 
 type ConstructableController struct {
-	data string
+    data string
 }
 
 func (c *ConstructableController) Construct(r *http.Request) {
-	c.data = r.URL.RawQuery
+    c.data = r.URL.RawQuery
 }
 
 func (c *ConstructableController) RouteGroup() routercontract.RouteGroup {
-	return &router.RouteGroup{Prefix: "/constructable"}
+    return &router.RouteGroup{Prefix: "/constructable"}
 }
 
 func (c *ConstructableController) Get(r *http.Request) responsecontract.Responser {
-	return response.New(http.StatusOK, c.data)
+    return response.New(http.StatusOK, c.data)
 }
 
 func main() {
-	r := router.New()
-	constructableController := &ConstructableController{}
-	r.Controller(constructableController, func(r routercontract.Router) {
-	    r.GET("/get", constructableController.Get)	
-	})
+    r := router.New()
+    constructableController := &ConstructableController{}
+    r.Controller(constructableController, func(r routercontract.Router) {
+        r.GET("/get", constructableController.Get)    
+    })
 }
 ```
 
@@ -213,36 +213,36 @@ func main() {
 package main
 
 import (
-	responsecontract "github.com/gopi-frame/contract/response"
-	routercontract "github.com/gopi-frame/contract/router"
-	"github.com/gopi-frame/router"
-	"github.com/gopi-frame/response"
-	"net/http"
+    responsecontract "github.com/gopi-frame/contract/response"
+    routercontract "github.com/gopi-frame/contract/router"
+    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/response"
+    "net/http"
 )
 
 type StaticMiddleware struct{}
 
 func (s *StaticMiddleware) Handle(r *http.Request, next routerconstract.Handler) responsecontract.Responser {
-	if r.URL.Path != "/middleware" {
-		return response.New(403, "Forbidden")
-	}
-	return next(r)
+    if r.URL.Path != "/middleware" {
+        return response.New(403, "Forbidden")
+    }
+    return next(r)
 }
 
 func main() {
-	r := router.New()
-	r.Use(&StaticMiddleware{}) // add global middleware
-	r.GET("/middleware", func(r *http.Request) responsecontract.Responser {
-		return response.New(http.StatusOK, "Hello World")
+    r := router.New()
+    r.Use(&StaticMiddleware{}) // add global middleware
+    r.GET("/middleware", func(r *http.Request) responsecontract.Responser {
+        return response.New(http.StatusOK, "Hello World")
     }).Use(&StaticMiddleware{}) // add middleware to specific route
-	r.Group(&router.RouteGroup{Prefix: "/group"}, func(r routercontract.Router) {
-		r.GET("/get", func(r *http.Request) responsecontract.Responser {
-			return response.New(http.StatusOK, "Hello World")
-		})
-	}).Use(&StaticMiddleware{}) // add middleware to specific group
-	if err := http.ListenAndServe(":8080", r); err != nil {
-		panic(err)
-	}
+    r.Group(&router.RouteGroup{Prefix: "/group"}, func(r routercontract.Router) {
+        r.GET("/get", func(r *http.Request) responsecontract.Responser {
+            return response.New(http.StatusOK, "Hello World")
+        })
+    }).Use(&StaticMiddleware{}) // add middleware to specific group
+    if err := http.ListenAndServe(":8080", r); err != nil {
+        panic(err)
+    }
 }
 ```
 
@@ -257,41 +257,83 @@ It is useful when you want to initialize a middleware with some data.
 package main
 
 import (
-	responsecontract "github.com/gopi-frame/contract/response"
-	routercontract "github.com/gopi-frame/contract/router"
-	"github.com/gopi-frame/router"
-	"github.com/gopi-frame/response"
-	"net/http"
+    responsecontract "github.com/gopi-frame/contract/response"
+    routercontract "github.com/gopi-frame/contract/router"
+    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/response"
+    "net/http"
 )
 
 type NonStaticMiddleware struct{
-	data string
+    data string
 }
 
 func (s *NonStaticMiddleware) Construct(r *http.Request) {
-	s.data = r.URL.RawQuery
+    s.data = r.URL.RawQuery
 }
 
 func (s *NonStaticMiddleware) Handle(r *http.Request, next routerconstract.Handler) responsecontract.Responser {
-	if r.URL.Path != "/middleware" {
-		return response.New(403, "Forbidden")
-	}
-	return next(r)
+    if r.URL.Path != "/middleware" {
+        return response.New(403, "Forbidden")
+    }
+    return next(r)
 }
 
 func main() {
-	r := router.New()
-	r.Use(&NonStaticMiddleware{}) // add global middleware
-	r.GET("/middleware", func(r *http.Request) responsecontract.Responser {
-		return response.New(http.StatusOK, "Hello World")
+    r := router.New()
+    r.Use(&NonStaticMiddleware{}) // add global middleware
+    r.GET("/middleware", func(r *http.Request) responsecontract.Responser {
+        return response.New(http.StatusOK, "Hello World")
     }).Use(&NonStaticMiddleware{}) // add middleware to specific route
-	r.Group(&router.RouteGroup{Prefix: "/group"}, func(r routercontract.Router) {
-		r.GET("/get", func(r *http.Request) responsecontract.Responser {
-			return response.New(http.StatusOK, "Hello World")
-		})
-	}).Use(&NonStaticMiddleware{}) // add middleware to specific group
-	if err := http.ListenAndServe(":8080", r); err != nil {
-		panic(err)
-	}
+    r.Group(&router.RouteGroup{Prefix: "/group"}, func(r routercontract.Router) {
+        r.GET("/get", func(r *http.Request) responsecontract.Responser {
+            return response.New(http.StatusOK, "Hello World")
+        })
+    }).Use(&NonStaticMiddleware{}) // add middleware to specific group
+    if err := http.ListenAndServe(":8080", r); err != nil {
+        panic(err)
+    }
+}
+```
+
+## Custom error handler
+
+### Not Found
+
+```go
+package main
+
+import (
+    "net/http"
+    responsecontract "github.com/gopi-frame/contract/response"
+    "github.com/gopi-frame/response"
+    "github.com/gopi-frame/router"
+)
+
+func main() {
+    r := router.New()
+    r.NotFound(func(req *http.Request) responsecontract.Responser {
+        return response.New(http.StatusNotFound, "Not Found")
+    })
+}
+```
+
+### Method Not Allowed
+
+```go
+package main
+
+import (
+    "net/http"
+    responsecontract "github.com/gopi-frame/contract/response"
+    "github.com/gopi-frame/response"
+    "github.com/gopi-frame/router"
+)
+
+func main() {
+    r := router.New()
+    r.MethodNotAllowed(func(req *http.Request) responsecontract.Responser {
+        return response.New(http.StatusMethodNotAllowed, "Method Not Allowed")
+    })
 }
 ```

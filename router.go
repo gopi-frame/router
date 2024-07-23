@@ -150,3 +150,23 @@ func (r *Router) Route(methods []string, path string, handler routercontract.Han
 		originalHandler: handler,
 	}
 }
+
+func (r *Router) OnNotFound(handler routercontract.Handler) {
+	r.Router.NotFoundHandler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		resp := handler(req)
+		if resp == nil {
+			resp = response.New(http.StatusNotFound)
+		}
+		resp.ServeHTTP(w, req)
+	})
+}
+
+func (r *Router) OnMethodNotAllowed(handler routercontract.Handler) {
+	r.Router.MethodNotAllowedHandler = http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		resp := handler(req)
+		if resp == nil {
+			resp = response.New(http.StatusMethodNotAllowed)
+		}
+		resp.ServeHTTP(w, req)
+	})
+}

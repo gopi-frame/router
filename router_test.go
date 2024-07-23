@@ -692,3 +692,39 @@ func TestRouter_Use(t *testing.T) {
 		})
 	})
 }
+
+func TestRouter_OnNotFound(t *testing.T) {
+	r := New()
+	r.GET("/get", func(request *http.Request) responseconstract.Responser {
+		return response.New(200).JSON(map[string]any{"id": request.Context().Value(idKey)})
+	})
+	r.OnNotFound(func(request *http.Request) responseconstract.Responser {
+		return response.New(404).JSON(map[string]any{"message": "not found"})
+	})
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("GET", "/notfound", nil)
+	if err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	r.ServeHTTP(w, req)
+	assert.Equal(t, 404, w.Code)
+	assert.JSONEq(t, `{"message": "not found"}`, w.Body.String())
+}
+
+func TestRouter_OnMethodNotAllowed(t *testing.T) {
+	r := New()
+	r.GET("/get", func(request *http.Request) responseconstract.Responser {
+		return response.New(200).JSON(map[string]any{"id": request.Context().Value(idKey)})
+	})
+	r.OnMethodNotAllowed(func(request *http.Request) responseconstract.Responser {
+		return response.New(405).JSON(map[string]any{"message": "method not allowed"})
+	})
+	w := httptest.NewRecorder()
+	req, err := http.NewRequest("POST", "/get", nil)
+	if err != nil {
+		assert.FailNow(t, err.Error())
+	}
+	r.ServeHTTP(w, req)
+	assert.Equal(t, 405, w.Code)
+	assert.JSONEq(t, `{"message": "method not allowed"}`, w.Body.String())
+}
