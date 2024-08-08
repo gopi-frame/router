@@ -1,4 +1,4 @@
-package router
+package mux
 
 import (
 	responseconstract "github.com/gopi-frame/contract/response"

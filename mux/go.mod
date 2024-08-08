@@ -1,4 +1,4 @@
-module github.com/gopi-frame/router
+module github.com/gopi-frame/router/mux
 
 go 1.22.2
 

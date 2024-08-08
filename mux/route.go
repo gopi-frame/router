@@ -1,4 +1,4 @@
-package router
+package mux
 
 import (
 	pipelinecontract "github.com/gopi-frame/contract/pipeline"

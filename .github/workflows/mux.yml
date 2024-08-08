@@ -1,4 +1,4 @@
-name: Go
+name: Test mux
 on:
   push:
     branches: [ main ]
@@ -18,17 +18,17 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
 
-      - name: Go mod tidy
-        run: go mod tidy
-
       - name: Test with coverage report
-        run: go test -v -coverprofile=coverage.out ./...
+        work-directory: ./mux
+        run: |
+          go mod tidy
+          go test -v -coverprofile=coverage.out ./...
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v4.0.1
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage.out
+          files: ./mux/coverage.out
           fail_ci_if_error: true
           verbose: true
           flags: unittests

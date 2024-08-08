@@ -1,14 +1,16 @@
 # Overview
-Package router provides route handling for HTTP Request base on [gorilla/mux](https://github.com/gorilla/mux)
+
+
+Package mux provides route handling for HTTP Request base on [gorilla/mux](https://github.com/gorilla/mux)
 
 ## Installation
 ```shell
-go get -u -v github.com/gopi-frame/router
+go get -u -v github.com/gopi-frame/router/mux
 ```
 
 ## Import
 ```go
-import "github.com/gopi-frame/router"
+import "github.com/gopi-frame/router/mux"
 ```
 
 ## Usage
@@ -21,7 +23,7 @@ package main
 import (
     responsecontract "github.com/gopi-frame/contract/response"
     "github.com/gopi-frame/response"
-    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/router/mux"
 )
 
 var handler = func(r *http.Request) responsecontract.Responser {
@@ -29,7 +31,7 @@ var handler = func(r *http.Request) responsecontract.Responser {
 }
 
 func main() {
-    r := router.New()
+    r := mux.New()
     r.GET("/get", handler)
     r.POST("/post", handler)
     r.PUT("/put", handler)
@@ -52,7 +54,7 @@ import (
     responsecontract "github.com/gopi-frame/contract/response"
     routercontract "github.com/gopi-frame/contract/router"
     "github.com/gopi-frame/response"
-    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/router/mux"
 )
 
 var handler = func(r *http.Request) responsecontract.Responser {
@@ -60,7 +62,7 @@ var handler = func(r *http.Request) responsecontract.Responser {
 }
 
 func main() {
-    r := router.New()
+    r := mux.New()
     r.Group(&router.RouteGroup{
         Prefix: "/group", // prefix all routes in group
     }, func(r routercontract.Router) {
@@ -93,7 +95,7 @@ import (
     responsecontract "github.com/gopi-frame/contract/response"
     routercontract "github.com/gopi-frame/contract/router"
     "github.com/gopi-frame/response"
-    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/router/mux"
 )
 
 var handler = func(r *http.Request) responsecontract.Responser {
@@ -101,7 +103,7 @@ var handler = func(r *http.Request) responsecontract.Responser {
 }
 
 func main() {
-    r := router.New()
+    r := mux.New()
     r.Group(&router.Route    oup{
         Host: "example.com",
     }, func(r routercontract.Router) {
@@ -135,7 +137,7 @@ import (
     responsecontract "github.com/gopi-frame/contract/response"
     routercontract "github.com/gopi-frame/contract/router"
     "github.com/gopi-frame/response"
-    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/router/mux"
     "net/http"
 )
 
@@ -150,7 +152,7 @@ func (s *StaticController) Get(r *http.Request) responsecontract.Responser {
 }
 
 func main() {
-    r := router.New()
+    r := mux.New()
     staticController := &StaticController{}
     r.Controller(, func(r routercontract.Router) {
         r.GET("/get", staticController.Get)
@@ -176,7 +178,7 @@ import (
     responsecontract "github.com/gopi-frame/contract/response"
     routercontract "github.com/gopi-frame/contract/router"
     "github.com/gopi-frame/response"
-    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/router/mux"
     "net/http"
 )
 
@@ -215,7 +217,7 @@ package main
 import (
     responsecontract "github.com/gopi-frame/contract/response"
     routercontract "github.com/gopi-frame/contract/router"
-    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/router/mux"
     "github.com/gopi-frame/response"
     "net/http"
 )
@@ -230,7 +232,7 @@ func (s *StaticMiddleware) Handle(r *http.Request, next routerconstract.Handler)
 }
 
 func main() {
-    r := router.New()
+    r := mux.New()
     r.Use(&StaticMiddleware{}) // add global middleware
     r.GET("/middleware", func(r *http.Request) responsecontract.Responser {
         return response.New(http.StatusOK, "Hello World")
@@ -259,7 +261,7 @@ package main
 import (
     responsecontract "github.com/gopi-frame/contract/response"
     routercontract "github.com/gopi-frame/contract/router"
-    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/router/mux"
     "github.com/gopi-frame/response"
     "net/http"
 )
@@ -280,7 +282,7 @@ func (s *NonStaticMiddleware) Handle(r *http.Request, next routerconstract.Handl
 }
 
 func main() {
-    r := router.New()
+    r := mux.New()
     r.Use(&NonStaticMiddleware{}) // add global middleware
     r.GET("/middleware", func(r *http.Request) responsecontract.Responser {
         return response.New(http.StatusOK, "Hello World")
@@ -307,11 +309,11 @@ import (
     "net/http"
     responsecontract "github.com/gopi-frame/contract/response"
     "github.com/gopi-frame/response"
-    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/router/mux"
 )
 
 func main() {
-    r := router.New()
+    r := mux.New()
     r.NotFound(func(req *http.Request) responsecontract.Responser {
         return response.New(http.StatusNotFound, "Not Found")
     })
@@ -327,11 +329,11 @@ import (
     "net/http"
     responsecontract "github.com/gopi-frame/contract/response"
     "github.com/gopi-frame/response"
-    "github.com/gopi-frame/router"
+    "github.com/gopi-frame/router/mux"
 )
 
 func main() {
-    r := router.New()
+    r := mux.New()
     r.MethodNotAllowed(func(req *http.Request) responsecontract.Responser {
         return response.New(http.StatusMethodNotAllowed, "Method Not Allowed")
     })
