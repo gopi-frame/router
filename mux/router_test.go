@@ -21,7 +21,7 @@ func (s *staticController) RouteGroup() routercontract.RouteGroup {
 	return &RouteGroup{Prefix: s.Prefix, Host: s.Host}
 }
 
-func (s *staticController) Get(r *http.Request) responseconstract.Responser {
+func (s *staticController) Get(_ *http.Request) responseconstract.Responser {
 	return response.New(http.StatusOK).JSON(map[string]any{"prefix": s.Prefix, "host": s.Host})
 }
 
@@ -39,7 +39,7 @@ func (n *nonStaticController) RouteGroup() routercontract.RouteGroup {
 	return &RouteGroup{Prefix: n.Prefix, Host: n.Host}
 }
 
-func (n *nonStaticController) Get(r *http.Request) responseconstract.Responser {
+func (n *nonStaticController) Get(_ *http.Request) responseconstract.Responser {
 	return response.New(http.StatusOK).JSON(n.queries)
 }
 

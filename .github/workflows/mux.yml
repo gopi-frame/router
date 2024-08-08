@@ -19,7 +19,7 @@ jobs:
           go-version: ${{ matrix.go-version }}
 
       - name: Test with coverage report
-        work-directory: ./mux
+        working-directory: ./mux
         run: |
           go mod tidy
           go test -v -coverprofile=coverage.out ./...
