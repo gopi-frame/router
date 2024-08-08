@@ -1,0 +1,26 @@
+codecov:
+  require_ci_to_pass: true
+  notify:
+    wait_for_ci: true
+    after_n_builds: 1
+coverage:
+  precision: 2
+  round: down
+  status:
+    project:
+      default:
+        target: 90%
+        threshold: 1%
+    patch:
+      default:
+        target: 90%
+        threshold: 1%
+comment:
+  layout: "diff, flags, files"
+  behavior: default
+  require_changes: false
+flags:
+  mux:
+    carryforward: true
+    paths:
+      - "./mux/*"
