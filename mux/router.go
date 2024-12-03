@@ -1,13 +1,14 @@
 package mux
 
 import (
-	pipelinecontract "github.com/gopi-frame/contract/pipeline"
-	"github.com/gopi-frame/pipeline"
-	"github.com/gopi-frame/response"
 	"net/http"
 	"reflect"
 	"runtime"
 	"strings"
+
+	pipelinecontract "github.com/gopi-frame/contract/pipeline"
+	"github.com/gopi-frame/pipeline"
+	"github.com/gopi-frame/response"
 
 	responseconstract "github.com/gopi-frame/contract/response"
 	routercontract "github.com/gopi-frame/contract/router"
@@ -35,7 +36,6 @@ func New() *Router {
 func (r *Router) Use(middlewares ...routercontract.Middleware) routercontract.Router {
 	if len(middlewares) != 0 {
 		r.middlewares = append(r.middlewares, middlewares...)
-
 	}
 	return r
 }
@@ -148,6 +148,14 @@ func (r *Router) Route(methods []string, path string, handler routercontract.Han
 	return &Route{
 		Route:           route,
 		originalHandler: handler,
+	}
+}
+
+func (r *Router) Handle(methods []string, path string, handler http.Handler) routercontract.Route {
+	route := r.Router.Methods(methods...).Path(path).Handler(handler)
+	return &Route{
+		Route:           route,
+		originalHandler: nil,
 	}
 }
 
