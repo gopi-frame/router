@@ -1,13 +1,14 @@
 package mux
 
 import (
+	"net/http"
+	"reflect"
+
 	pipelinecontract "github.com/gopi-frame/contract/pipeline"
 	"github.com/gopi-frame/contract/response"
 	"github.com/gopi-frame/contract/router"
 	"github.com/gopi-frame/pipeline"
 	"github.com/gorilla/mux"
-	"net/http"
-	"reflect"
 )
 
 type Route struct {
@@ -54,7 +55,10 @@ func (r *Route) Use(middlewares ...router.Middleware) router.Route {
 		}
 		resp := p.Through(pipes...).Then(func(request *http.Request) response.Responser {
 			req = request
-			return r.originalHandler(request)
+			if r.originalHandler != nil {
+				return r.originalHandler(request)
+			}
+			return nil
 		})
 		resp.ServeHTTP(w, req)
 	})

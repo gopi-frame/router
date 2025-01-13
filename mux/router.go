@@ -154,8 +154,20 @@ func (r *Router) Route(methods []string, path string, handler routercontract.Han
 func (r *Router) Handle(methods []string, path string, handler http.Handler) routercontract.Route {
 	route := r.Router.Methods(methods...).Path(path).Handler(handler)
 	return &Route{
-		Route:           route,
-		originalHandler: nil,
+		Route: route,
+		originalHandler: func(request *http.Request) responseconstract.Responser {
+			return response.NewHandlerWrapper(handler)
+		},
+	}
+}
+
+func (r *Router) Static(prefix string, root http.FileSystem) routercontract.Route {
+	route := r.Router.PathPrefix(prefix).Handler(http.StripPrefix(prefix, http.FileServer(root)))
+	return &Route{
+		Route: route,
+		originalHandler: func(request *http.Request) responseconstract.Responser {
+			return response.NewHandlerWrapper(http.StripPrefix(prefix, http.FileServer(root)))
+		},
 	}
 }
 
